@@ -1,0 +1,1590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VK POS (Adaptive UI)</title>
+<style>
+    /* =======================================================
+    REVISED BRIGHT, SMOOTH & CLEAN STYLES
+    =======================================================
+    */
+    /* Base Styles */
+    body { 
+        font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+        margin: 0; 
+        padding: 0; 
+        /* Bright Gradient Background */
+        background: linear-gradient(135deg, #f0f8ff, #ffffff, #e0ffff); 
+        background-attachment: fixed; 
+        color: #333; 
+        display: flex; 
+        justify-content: center;
+        align-items: flex-start; 
+        min-height: 100vh;
+        position: relative; /* For watermark positioning */
+    }
+    
+    /* MAIN UI WATERMARK */
+    .watermark-ui {
+        position: fixed;
+        bottom: 5px;
+        right: 10px;
+        font-size: 0.8em;
+        font-weight: bold;
+        color: rgba(0, 0, 0, 0.3);
+        pointer-events: none;
+        z-index: 5;
+        font-family: monospace;
+    }
+
+    .container { 
+        max-width: 420px; 
+        width: 100%;
+        margin: 0; 
+        background: #fff; 
+        min-height: 100vh; 
+        display: flex; 
+        flex-direction: column; 
+        box-shadow: 0 0 20px rgba(0,0,0,0.1); 
+        overflow: hidden; 
+        transition: max-width 0.3s ease-in-out; /* Smooth transition for view toggle */
+        padding-bottom: 25px; /* Space for watermark */
+    }
+    
+    /* =======================================================
+    ADAPTIVE / DESKTOP MODE STYLES
+    ======================================================= */
+    /* When the 'adaptive' class is added to container */
+    .container.adaptive {
+        max-width: 98vw; /* Expand to full width */
+        border-radius: 8px;
+        margin-top: 10px;
+        margin-bottom: 10px;
+        min-height: 95vh;
+        height: 95vh; /* Fix height to viewport for scrolling areas */
+        box-shadow: 0 0 30px rgba(0,0,0,0.15);
+    }
+
+    /* Desktop Layout: Grid System (Only applies if screen is wide enough) */
+    @media (min-width: 768px) {
+        .container.adaptive {
+            display: grid;
+            grid-template-columns: 60% 40%; /* Left: Items, Right: Cart */
+            grid-template-rows: auto auto 1fr; /* Header | Search | Content */
+            grid-template-areas: 
+                "header header"
+                "search search"
+                "items cart";
+        }
+
+        .container.adaptive .header { grid-area: header; }
+        .container.adaptive .search-bar { grid-area: search; }
+        
+        /* Scrollable Areas for Desktop */
+        .container.adaptive .items-list { 
+            grid-area: items; 
+            max-height: 100%; 
+            overflow-y: auto; 
+            border-right: 2px solid #e0f7fa;
+            padding: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); /* Grid of cards for items */
+            grid-auto-rows: min-content;
+            gap: 15px;
+            align-content: start;
+        }
+
+        /* Card styling for items in Desktop Mode */
+        .container.adaptive .items-list .item {
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            padding: 20px;
+            height: auto;
+            border-left: none;
+            border-top: 4px solid #00bcd4;
+            background: #fff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .container.adaptive .items-list .item:hover { transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        .container.adaptive .items-list #searchTip { grid-column: 1 / -1; }
+
+        .container.adaptive .cart { 
+            grid-area: cart; 
+            max-height: 100%; 
+            overflow-y: auto; 
+            background: #fdfdfd;
+            border-top: none;
+            box-shadow: -5px 0 15px rgba(0,0,0,0.03);
+        }
+    }
+
+    /* Transitions */
+    .header-btn, .search-btn, .scan-btn, .item, .qty-controls button, #completeSaleBtn, 
+    .inventory-controls button, .bill-controls button, .add-bill-btn, 
+    .date-filters button, .calc-button, 
+    #inventoryManagementPanel, #historyPanel, #notesPanel, #analysisPanel, #calculatorPanel, 
+    #paymentHistoryModal, #parkedSalesPanel, #shiftHistoryPanel, #productionPanel, #settingsPanel {
+        transition: all 0.3s ease-in-out; 
+    }
+
+    /* Full Screen Panels */
+    #inventoryManagementPanel, #historyPanel, #notesPanel, #analysisPanel, #calculatorPanel, 
+    #paymentHistoryModal, #parkedSalesPanel, #shiftHistoryPanel, #productionPanel, #settingsPanel {
+        background: #ffffff;
+        position: fixed; 
+        top: 0; left: 0; right: 0; bottom: 0;
+        height: 100vh; 
+        z-index: 1000;
+        display: none; 
+        box-sizing: border-box;
+        padding: 15px; 
+        overflow-y: auto;
+        color: #333; 
+        transform: translateX(100%);
+        transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }
+    .panel-open { transform: translateX(0) !important; }
+    
+    .panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+        border-bottom: 2px solid #00bcd4;
+        padding-bottom: 10px;
+        position: sticky; top: 0;
+        background: #fff;
+        z-index: 10;
+    }
+    .panel-header h4 { margin: 0; color: #00bcd4; }
+    .panel-close-btn {
+        background: #ff5722; color: white; border: none; padding: 8px 12px;
+        border-radius: 6px; font-weight: bold; cursor: pointer;
+    }
+
+    /* Header & Buttons */
+    .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px;
+        background: #e0f7fa;
+        color: #333;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border-bottom: 3px solid #00bcd4;
+        position: sticky; top: 0;
+        z-index: 50;
+    }
+    .header-controls { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 5px; }
+    .header-btn {
+        background: #00bcd4; border: none; color: white; font-size: 0.8em; 
+        padding: 6px 10px; border-radius: 4px; cursor: pointer; font-weight: bold;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2); white-space: nowrap;
+    }
+    .header-btn:hover { background: #00acc1; transform: scale(1.05); }
+    .calculator-header-btn { background: #ff5722; }
+    .notes-btn { background: #4caf50; }
+    
+    /* View Toggle Button Style */
+    .view-toggle-btn { background: #673ab7; }
+
+    /* Search Bar */
+    .search-bar { 
+        display: flex; padding: 10px; background: #f5f5f5; border-bottom: 1px solid #ddd; 
+        position: sticky; top: 48px; z-index: 40;
+    }
+    .search-bar input { flex: 1; padding: 12px; border: 1px solid #ccc; border-radius: 8px 0 0 8px; background: #fff; color: #333; }
+    .search-bar .search-btn { padding: 12px; border: none; background: #ffc107; color: #333; border-radius: 0 8px 8px 0; cursor: pointer; }
+    .search-bar .scan-btn {
+        padding: 12px; border: none; background: #00bcd4; color: white; 
+        border-radius: 8px; margin-left: 8px; font-weight: bold; cursor: pointer;
+    }
+    
+    /* Items List */
+    .items-list { max-height: 45vh; overflow-y: auto; padding: 10px; background: #fff; border-bottom: 1px solid #eee; }
+    .item { 
+        display: flex; justify-content: space-between; padding: 15px; background: #f9f9f9; 
+        margin-bottom: 8px; border-radius: 8px; cursor: pointer; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+        color: #333; border-left: 4px solid #00bcd4;
+    }
+    .item:hover { background: #eee; transform: translateY(-1px); }
+    .item.out-of-stock { background: #ffe0b2; color: #795548; cursor: not-allowed; border-left: 4px solid #ff5722; }
+    .item-stock { font-size: 0.8em; color: #777; }
+
+    /* Cart Section */
+    .cart { padding: 15px; background: #ffffff; border-top: 1px solid #eee; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); }
+    .cart-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px dashed #ccc; color: #333; }
+    .qty-controls button { background: #00bcd4; color: white; border: none; width: 35px; height: 35px; margin-left: 5px; border-radius: 50%; font-weight: bold; }
+    .qty-controls button:first-child { background: #ff5722; }
+
+    /* Total Summary */
+    .total-summary div { display: flex; justify-content: space-between; margin-bottom: 8px; color: #333; }
+    .total-summary .input-line input, .payment-method-line select {
+        padding: 10px; border-radius: 6px; font-size: 1em; font-weight: bold;
+        border: 1px solid #ccc; background-color: #f9f9f9; color: #333;
+    }
+    .total-summary .input-line input { width: 120px; height: auto; text-align: right; font-size: 1.2em; border: 1px solid #00bcd4; }
+    .change-line { font-size: 1.2em; padding: 10px 0; border-top: 2px solid #ccc; margin-top: 10px; }
+    .balance-due { color: #d32f2f; }
+    .change-due { color: #4caf50; }
+    .exact-payment { color: #333; }
+
+    /* Controls */
+    .print-analysis-controls { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+    .print-analysis-controls button { flex: 1 1 45%; padding: 10px; border-radius: 6px; border: none; color: white; font-size: 0.9em; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+    #calcBtnMobile { background: #ff5722; } 
+    #analysisBtn { background: #00bcd4; } 
+    #printBillBtn { background: #ffc107; color: #333;} 
+    #printTokenBtn { background: #4caf50; } 
+    #suspendSaleBtn { background: #3f51b5; flex: 1 1 100%; }
+    #recallSalesBtn { background: #f44336; }
+
+    #completeSaleBtn {
+        padding: 15px; margin-top: 10px; font-size: 1.2em; font-weight: bold; color: white;
+        background: #4caf50; border: none; border-radius: 8px; box-shadow: 0 4px 0 #388e3c; cursor: pointer;
+    }
+    #completeSaleBtn:hover { background: #388e3c; transform: translateY(-1px); }
+    #completeSaleBtn:disabled { background: #b0b0b0; cursor: not-allowed; box-shadow: none; border-bottom: none; }
+
+    /* Calculator */
+    .calculator-keypad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; padding: 15px; background: #f9f9f9; flex: 1; border-radius: 0 0 10px 10px; }
+    .calculator-display { 
+        background: #e0f7fa; display: flex; flex-direction: column; justify-content: flex-end; align-items: flex-end; 
+        padding: 25px 20px; color: #333; text-align: right; border-bottom: 1px solid #00bcd4; min-height: 150px; position: relative;
+    }
+    .calc-input { font-size: 3.5em; font-weight: 300; overflow-x: scroll; white-space: nowrap; margin-bottom: 5px; line-height: 1.2; width: 100%; text-align: right; }
+    .calc-input::-webkit-scrollbar { display: none; }
+    .calc-result { font-size: 1.8em; color: #888; line-height: 1; }
+    .calc-button { background-color: #f1f1f1; color: #333; border: none; border-radius: 12px; padding: 20px 0; font-size: 1.8em; font-weight: 500; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); }
+    .btn-red { background-color: #ff5722; color: white; }
+    .btn-green { background-color: #4caf50; color: white; grid-row: span 2; }
+    .btn-cyan { background-color: #00bcd4; color: white; }
+
+    /* Parked & Shift Cards */
+    .parked-sale-card, .shift-card { background: #f9f9f9; border: 1px solid #ccc; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); padding: 15px; margin-bottom: 10px; border-radius: 8px; border-left: 5px solid #3f51b5; }
+    .shift-card { border-left: 5px solid #ff5722; }
+    .parked-sale-header, .shift-header { display: flex; justify-content: space-between; font-weight: bold; padding-bottom: 5px; margin-bottom: 5px; border-bottom: 1px dashed #ccc; }
+    .parked-sale-controls, .shift-controls { display: flex; gap: 8px; margin-top: 10px; }
+    .parked-sale-controls button, .shift-controls button { flex: 1; padding: 10px; border: none; border-radius: 6px; color: white; font-weight: bold; cursor: pointer; }
+    .recall-btn { background: #4caf50; }
+    .print-shift-btn { background: #ffc107; color: #333;}
+    .parked-summary { font-size: 0.9em; color: #555; }
+
+    /* Inputs within panels */
+    #inventoryManagementPanel input, #notesPanel input, #notesPanel select, #analysisPanel input, #settingsPanel input {
+        background: #f0f0f0 !important; color: #333 !important; border: 1px solid #ccc !important; padding: 8px; border-radius: 4px;
+    }
+    .inventory-item { margin-bottom: 5px; padding: 10px; background: #fff; border: 1px solid #eee; border-left: 4px solid #ff5722; border-radius: 6px; }
+    .inventory-inputs input { width: 60px; text-align: right; }
+    .inventory-controls button { background: #ff5722; color: white; border: none; padding: 8px; border-radius: 4px; margin-top: 5px; cursor: pointer; }
+    
+    /* New Arrivals Input Styling */
+    .new-arrival-form input, .new-arrival-form button {
+        width: 100%; padding: 10px; border-radius: 4px; margin-bottom: 5px;
+        border: 1px solid #ccc; box-sizing: border-box;
+    }
+    .new-arrival-form button {
+        background: #00bcd4; color: white; font-weight: bold; border: none; margin-top: 10px;
+    }
+    .arrival-log-item {
+        padding: 10px; background: #f0f8ff; border-left: 4px solid #3f51b5;
+        margin-bottom: 8px; border-radius: 4px; font-size: 0.9em;
+    }
+
+
+    /* Bills/Notes */
+    .bill-card { background: #f9f9f9; border: 1px solid #eee; padding: 10px; margin-bottom: 10px; border-radius: 6px; border-left: 5px solid #4caf50; }
+    .daily-pay-section { background: #e0f7fa; border: 1px solid #00bcd4; padding: 15px; margin-bottom: 15px; border-radius: 8px; }
+    .daily-pay-inputs input, .daily-pay-inputs select { width: 100%; padding: 10px; border-radius: 4px; margin-bottom: 5px; border: 1px solid #ccc; }
+    .daily-pay-inputs button { width: 100%; padding: 10px; background: #ff5722; color: white; border: none; border-radius: 8px; margin-top: 10px; font-weight: bold; }
+    .daily-pay-record { background: #fff; padding: 8px; border-radius: 4px; margin-bottom: 5px; display: flex; justify-content: space-between; border-left: 3px solid #ffc107; }
+
+    .daily-cash-balance-section { background: #fff3e0; border: 2px solid #ff9800; padding: 15px; margin-top: 20px; border-radius: 8px; }
+    .cash-balance-summary { display: flex; justify-content: space-between; padding: 10px 0; font-size: 1.2em; font-weight: bold; border-top: 1px dashed #ff9800; margin-top: 10px; }
+    .cash-balance-summary .value { color: #4caf50; }
+    .cash-balance-summary.negative .value { color: #d32f2f; }
+
+    /* Analysis */
+    .transaction-card, .stat-card { background: #f9f9f9; border: 1px solid #eee; padding: 10px; margin-bottom: 10px; border-radius: 6px; color: #333; }
+    .transaction-header { font-weight: bold; display: flex; justify-content: space-between; padding-bottom: 5px; margin-bottom: 5px; border-bottom: 1px solid #ccc; }
+    .history-controls button { background: #00bcd4; color: white; border: none; padding: 8px; border-radius: 4px; cursor: pointer; }
+    .analysis-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+    .stat-card { padding: 15px; border-left: 5px solid #4caf50; }
+    .stat-card p { font-size: 1.4em; font-weight: bold; color: #333; margin: 0; }
+
+    /* Production Table */
+    .production-table-container { overflow-x: auto; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    .prod-table { width: 100%; border-collapse: collapse; min-width: 600px; font-size: 0.9em; }
+    .prod-table th, .prod-table td { padding: 12px 8px; text-align: left; border-bottom: 1px solid #eee; }
+    .prod-table th { background-color: #00bcd4; color: white; position: sticky; top: 0; }
+    .prod-table tr:nth-child(even) { background-color: #f9f9f9; }
+    .val-cell { font-weight: bold; }
+    .total-prod-row { background-color: #e0f7fa !important; font-weight: bold; border-top: 2px solid #00bcd4; }
+
+    /* =======================================================
+    UPDATED PRINT STYLES (BOLD, DARK, HIGH CONTRAST)
+    =======================================================
+    */
+    @media print {
+        body > *:not(#receiptOutput) { display: none !important; }
+        body { 
+            width: 80mm; margin: 0; padding: 0; background: none; 
+            color: #000000 !important; /* Pure Black */
+            font-family: 'Courier New', monospace; 
+            font-size: 12px; 
+            font-weight: 900 !important; /* Force Extra Bold */
+        }
+        #receiptOutput { 
+            display: block !important; width: 100%; max-width: 80mm; 
+            padding: 2px; box-sizing: border-box; 
+        }
+        
+        /* Force all elements to be black and bold */
+        * {
+            color: #000000 !important;
+            text-shadow: none !important;
+            font-weight: 900 !important;
+            box-shadow: none !important;
+            background: transparent !important;
+        }
+
+        .receipt-header, .receipt-footer { text-align: center; margin-bottom: 5px; padding: 5px 0; line-height: 1.3; }
+        .token-header { text-align: center; font-size: 1.6em; margin-bottom: 10px; }
+        .token-items { font-size: 1.2em; line-height: 1.5; padding: 10px 0; }
+        
+        .receipt-separator { 
+            border-top: 2px dashed #000000 !important; /* Thicker line */
+            margin: 5px 0; 
+            display: block;
+        }
+        
+        .receipt-line { display: flex; justify-content: space-between; white-space: pre; margin-bottom: 2px; }
+        .receipt-line span { display: inline-block; text-align: right; min-width: 70px; }
+        
+        .shift-report-section { padding: 5px 0; margin-bottom: 5px; }
+        .shift-report-section h5 { 
+            text-align: center; font-size: 1.2em; margin: 5px 0; 
+            text-transform: uppercase; border-bottom: 1px solid #000; display: inline-block;
+        }
+        
+        /* Make Total lines even larger */
+        .total-line-print { font-size: 1.2em; border-top: 1px solid #000; padding-top: 2px; }
+
+        /* PRINT WATERMARK */
+        .watermark-print {
+            text-align: center;
+            font-size: 10px;
+            font-weight: bold;
+            margin-top: 20px;
+            padding-top: 5px;
+            border-top: 1px solid #000;
+            font-family: monospace;
+        }
+    }
+</style>
+</head>
+<body onload="loadData()">
+
+<div class="watermark-ui">VK_GAMES_SOFTWARES</div>
+
+<div class="container" id="mainContainer">
+    
+    <div class="header">
+        <div id="mainHeaderTitle" style="font-weight: bold; font-size: 1.1em; color: #00bcd4;">VK POS</div>
+        <div class="header-controls">
+             <button class="header-btn view-toggle-btn" onclick="toggleLayout()">🖥️ View</button>
+             <button class="header-btn" onclick="togglePanel('settingsPanel')" style="background: #607d8b;">Settings ⚙️</button>
+             <button class="header-btn" id="startShiftBtn" onclick="startShift()" style="background: #4caf50;">Start Shift 🚀</button>
+             <button class="header-btn" id="closeShiftBtn" onclick="closeShift()" disabled style="background: #ff5722;">Close Shift 🔒</button>
+             <button class="header-btn calculator-header-btn" onclick="togglePanel('calculatorPanel')">Calc</button>
+             <button class="header-btn" onclick="togglePanel('analysisPanel')">Analysis</button>
+             <button class="header-btn" onclick="togglePanel('productionPanel')" style="background: #3f51b5;">Production 🏭</button>
+             <button class="header-btn notes-btn" onclick="togglePanel('notesPanel')">Notes</button>
+             <button class="header-btn" onclick="togglePanel('historyPanel')">History</button>
+             <button class="header-btn" onclick="togglePanel('inventoryManagementPanel')">Stock</button>
+             <button class="header-btn" onclick="togglePanel('shiftHistoryPanel')" style="background: #3f51b5;">Shifts 📄</button>
+        </div>
+    </div>
+
+    <div class="search-bar">
+        <input type="text" id="searchInput" placeholder="Search Items or Barcode..." onkeyup="filterItems()">
+        <button class="search-btn">🔍</button>
+        <button class="scan-btn" onclick="scanBarcode()">SCAN 📸</button>
+    </div>
+    
+    <div class="items-list" id="itemsList">
+        <p id="searchTip" style="text-align: center; color: #aaa; margin-top: 20px;">Type a name or barcode above to see product results.</p>
+    </div>
+
+    <div class="cart" id="cart">
+        <div style="color: #333; padding-bottom: 5px;"><strong>Current Cart:</strong></div>
+        <div id="cartItems"></div>
+        <div class="total-summary">
+            <div class="total">
+                <span style="font-weight: bold;">Total Product Price:</span>
+                <span style="font-weight: bold; color: #ff5722;">₹<span id="subTotal">0.00</span></span>
+            </div>
+            <div class="payment-method-line">
+                <span style="font-weight: bold;">Payment Method:</span>
+                <select id="paymentMethod">
+                    <option value="Cash">Cash</option>
+                    <option value="Card">Card</option>
+                    <option value="UPI">UPI</option>
+                    <option value="Credit">Credit (Outstanding)</option>
+                </select>
+            </div>
+            <div class="input-line">
+                <span style="font-weight: bold;">Money Received (₹):</span>
+                <input type="number" id="moneyReceived" value="0.00" oninput="calculateChange()" step="0.01" min="0">
+            </div>
+            <div class="total change-line" id="changeLine">
+                <span id="changeLabel">Remaining to Customer:</span>
+                <span style="font-weight: bold;">₹<span id="remainingChange">0.00</span></span>
+            </div>
+            <button id="suspendSaleBtn" onclick="suspendSale()" disabled>Park/Suspend Sale ⏸️</button>
+            <button id="completeSaleBtn" onclick="completeSale()" disabled>Complete Sale</button>
+            <div class="print-analysis-controls">
+                <button id="calcBtnMobile" onclick="togglePanel('calculatorPanel')">Calc 🧮</button>
+                <button id="recallSalesBtn" onclick="togglePanel('parkedSalesPanel')">Recall Parked Sales (<span id="parkedSalesCount">0</span>) 📁</button>
+                <button id="printBillBtn" onclick="printLastTransaction('bill')">Print Bill 🖨️</button>
+                <button id="printTokenBtn" onclick="printLastTransaction('token')">Print Token 🎫</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="settingsPanel">
+    <div class="panel-header">
+        <h4>System Settings ⚙️</h4>
+        <button onclick="togglePanel('settingsPanel')" class="panel-close-btn">Close ✕</button>
+    </div>
+    <div style="padding: 10px;">
+        <h5 style="color: #607d8b;">🏢 Company Information</h5>
+        <p style="font-size: 0.9em; color: #666;">This name will appear on the main screen and on all printed receipts.</p>
+        <label style="font-weight: bold; display: block; margin-bottom: 5px;">Company Name:</label>
+        <input type="text" id="settingsCompanyName" placeholder="e.g. My Awesome Shop" style="width: 100%; margin-bottom: 15px; font-size: 1.1em;">
+        
+        <button onclick="saveSettings()" style="width: 100%; padding: 12px; background: #4caf50; color: white; border: none; border-radius: 6px; font-weight: bold;">Save Settings 💾</button>
+        
+        <div style="margin-top: 30px; border-top: 1px solid #eee; padding-top: 10px; text-align: center; color: #aaa; font-size: 0.8em;">
+            VK POS Software v9.0<br>
+            VK_GAMES_SOFTWARES
+        </div>
+    </div>
+</div>
+
+<div id="calculatorPanel">
+     <div class="panel-header">
+         <h4>Full Screen Calculator 🧮</h4>
+         <button onclick="togglePanel('calculatorPanel')" class="panel-close-btn">Close ✕</button>
+     </div>
+     <div class="calculator-display">
+        <div class="calc-input" id="calcInput">0</div>
+        <div class="calc-result" id="calcResult"></div>
+    </div>
+    <div class="calculator-keypad">
+        <button class="calc-button btn-red" onclick="clearDisplay()">C</button>
+        <button class="calc-button btn-cyan" onclick="appendToDisplay('(')">(</button>
+        <button class="calc-button btn-cyan" onclick="appendToDisplay(')')">)</button>
+        <button class="calc-button btn-cyan" onclick="deleteLast()">⌫</button>
+        <button class="calc-button" onclick="appendToDisplay('7')">7</button>
+        <button class="calc-button" onclick="appendToDisplay('8')">8</button>
+        <button class="calc-button" onclick="appendToDisplay('9')">9</button>
+        <button class="calc-button btn-cyan" onclick="appendToDisplay('/')">÷</button>
+        <button class="calc-button" onclick="appendToDisplay('4')">4</button>
+        <button class="calc-button" onclick="appendToDisplay('5')">5</button>
+        <button class="calc-button" onclick="appendToDisplay('6')">6</button>
+        <button class="calc-button btn-cyan" onclick="appendToDisplay('*')">×</button>
+        <button class="calc-button" onclick="appendToDisplay('1')">1</button>
+        <button class="calc-button" onclick="appendToDisplay('2')">2</button>
+        <button class="calc-button" onclick="appendToDisplay('3')">3</button>
+        <button class="calc-button btn-cyan" onclick="appendToDisplay('-')">−</button>
+        <button class="calc-button" onclick="appendToDisplay('0')">0</button>
+        <button class="calc-button" onclick="appendToDisplay('.')">.</button>
+        <button class="calc-button btn-cyan" onclick="appendToDisplay('+')">+</button>
+        <button class="calc-button btn-green" onclick="calculateResult()">=</button>
+    </div>
+</div>
+
+<div id="paymentHistoryModal">
+    <div class="panel-header">
+        <h4 id="paymentHistoryTitle">Payment History</h4>
+        <button onclick="closePaymentHistory()" class="panel-close-btn">Close ✕</button>
+    </div>
+    <div id="paymentHistoryList"></div>
+</div>
+
+<div id="parkedSalesPanel">
+    <div class="panel-header">
+        <h4>Parked/Suspended Sales 📁</h4>
+        <button onclick="togglePanel('parkedSalesPanel')" class="panel-close-btn">Close ✕</button>
+    </div>
+    <div id="parkedSalesList"></div>
+</div>
+
+<div id="shiftHistoryPanel">
+    <div class="panel-header">
+        <h4>Shift History 📄</h4>
+        <button onclick="togglePanel('shiftHistoryPanel')" class="panel-close-btn">Close ✕</button>
+    </div>
+    <div id="shiftsList"></div>
+</div>
+
+<div id="productionPanel">
+    <div class="panel-header">
+        <h4>Daily Production Report 🏭</h4>
+        <button onclick="togglePanel('productionPanel')" class="panel-close-btn">Close ✕</button>
+    </div>
+    <div style="padding-bottom: 10px; color: #000; font-weight: bold; font-size: 0.9em; text-align: center;">
+        *Calculated based on TODAY'S SALES + Remaining Stock.
+    </div>
+    <div id="productionContent" class="production-table-container"></div>
+</div>
+
+<div id="analysisPanel">
+    <div class="panel-header">
+        <h4>Sales Analysis & Insights 📈</h4>
+        <button onclick="togglePanel('analysisPanel')" class="panel-close-btn">Close ✕</button>
+    </div>
+    <div class="date-filters" style="padding: 10px; background: #e0f7fa; border-radius: 8px; margin-bottom: 15px;">
+        <p id="analysisDateRangeLabel" style="text-align: center; font-weight: bold; margin: 0; color: #00bcd4;"></p>
+        <div class="date-filters-row" style="display: flex; gap: 5px; margin-bottom: 5px;">
+            <input type="date" id="startDateInput" value="" style="flex: 1;">
+            <input type="date" id="endDateInput" value="" style="flex: 1;">
+        </div>
+        <button onclick="renderAnalysisPanel()" style="width: 100%; padding: 10px; background: #ff5722; color: white; border: none; border-radius: 6px;">Filter by Date</button>
+    </div>
+    <div id="analysisContent">
+        <button onclick="resetAllData()" style="width: 100%; padding: 10px; background: #d32f2f; color: white; border: none; border-radius: 6px; margin-top: 20px;">
+            ⚠️ Reset ALL Data (Inventory, Sales, Notes)
+        </button>
+    </div>
+</div>
+
+<div id="notesPanel">
+    <div class="panel-header">
+        <h4>Shop Notes, Bills, & Daily Pay/Expense 📝</h4>
+        <button onclick="togglePanel('notesPanel')" class="panel-close-btn">Close ✕</button>
+    </div>
+    <div class="daily-pay-section">
+        <h5 style="margin-top: 0; color: #ff5722;">Log Daily Cash In/Out (Pay/Expense)</h5>
+        <input type="text" id="dailyPayDescription" placeholder="Description (e.g., Paid driver, Owner cash-in)" />
+        <div class="daily-pay-inputs" style="display: flex; gap: 5px; align-items: center;">
+            <input type="number" id="dailyPayAmount" placeholder="Amount (₹)" min="0.01" step="0.01" style="flex: 1;" />
+            <select id="dailyPayType" style="flex: 1;">
+                <option value="Expense">Cash Out/Expense (-) </option>
+                <option value="PayIn">Owner Cash In (+)</option>
+            </select>
+        </div>
+        <button onclick="addDailyPayNote()">Log Daily Pay/Expense</button>
+        <h5 style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 10px;">Today's Cash Log</h5>
+        <div id="dailyPayLog"></div>
+        <div class="daily-cash-balance-section">
+            <h5 style="margin-top: 0; color: #ff9800;">💰 Calculate Today's Net Cash Balance</h5>
+            <p style="font-size: 0.9em; color: #555;">(Cash Sales + Cash Pay-Ins - Expenses)</p>
+            <button onclick="calculateDailyCashBalance()" style="width: 100%; padding: 10px; background: #ff9800; color: white; border: none; border-radius: 8px; font-weight: bold;">
+                Calculate Today's Balance
+            </button>
+            <div id="dailyCashBalanceResult">
+                <div class="cash-balance-summary" style="border-top: none; margin-top: 0;">
+                    <span>Calculated Balance:</span>
+                    <span class="value" style="color: #555;">₹0.00</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div style="margin-bottom: 15px; border-bottom: 1px dashed #ccc; padding-bottom: 10px;">
+        <h5 style="margin-top: 0; color: #4caf50;">Log New Bill/Outstanding:</h5>
+        <input type="text" id="billDescription" placeholder="Description (e.g., Gas Bill, Customer Credit)" style="margin-bottom: 5px;" />
+        <div class="bill-input-group" style="display: flex; gap: 5px;">
+            <input type="number" id="billTotal" placeholder="Total (₹)" min="0.01" step="0.01" style="flex: 1;">
+            <input type="number" id="billPaid" placeholder="Paid Now (₹)" value="0.00" min="0.00" step="0.01" style="flex: 1;">
+        </div>
+        <button class="add-bill-btn" onclick="addBill()" style="width: 100%; padding: 10px; background: #4caf50; color: white; border: none; border-radius: 8px; margin-top: 10px; font-weight: bold;">Add Bill/Outstanding</button>
+    </div>
+    <h5 style="margin-top: 0; color: #4caf50;">Outstanding Bills/Credits:</h5>
+    <div id="billsList"></div>
+</div>
+
+<div id="historyPanel">
+    <div class="panel-header">
+        <h4>Transaction History 🧾</h4>
+        <button onclick="togglePanel('historyPanel')" class="panel-close-btn">Close ✕</button>
+    </div>
+    <div id="historyList"></div>
+</div>
+
+<div id="inventoryManagementPanel"></div>
+
+<div id="receiptOutput"></div>
+
+<script>
+// GLOBAL DATA STORAGE
+let items = [];
+let cart = [];
+let transactions = []; 
+let shopNotes = []; 
+let dailyPayNotes = []; 
+let parkedSales = []; 
+let expiryNotes = []; 
+let newArrivalsLog = []; 
+let shifts = []; 
+let currentShift = null; 
+let nextNoteId = 1;
+let nextTokenId = 1; 
+let nextParkedId = 1; 
+let nextShiftId = 1;
+let nextArrivalId = 1; 
+let companyName = "VK POS"; // Default Company Name
+
+// =======================================================
+// LAYOUT TOGGLE LOGIC
+// =======================================================
+function toggleLayout() {
+    const container = document.getElementById('mainContainer');
+    container.classList.toggle('adaptive');
+    
+    // Save preference
+    if (container.classList.contains('adaptive')) {
+        localStorage.setItem('posLayoutPreference', 'adaptive');
+    } else {
+        localStorage.setItem('posLayoutPreference', 'mobile');
+    }
+}
+
+// Restore layout preference on load
+function loadLayoutPreference() {
+    const pref = localStorage.getItem('posLayoutPreference');
+    if (pref === 'adaptive') {
+        document.getElementById('mainContainer').classList.add('adaptive');
+    }
+}
+
+// =======================================================
+// PANEL MANAGEMENT
+// =======================================================
+
+function togglePanel(panelId) {
+    const panel = document.getElementById(panelId);
+    const allPanels = ['inventoryManagementPanel', 'historyPanel', 'notesPanel', 'analysisPanel', 'calculatorPanel', 'paymentHistoryModal', 'parkedSalesPanel', 'shiftHistoryPanel', 'productionPanel', 'settingsPanel'];
+
+    if (panel.classList.contains('panel-open')) {
+        panel.classList.remove('panel-open');
+        setTimeout(() => { panel.style.display = 'none'; }, 400); 
+    } else {
+        allPanels.forEach(id => {
+            const p = document.getElementById(id);
+            if (p.classList.contains('panel-open')) {
+                 p.classList.remove('panel-open');
+                 p.style.display = 'none';
+            }
+        });
+
+        panel.style.display = 'block';
+        setTimeout(() => { 
+            panel.classList.add('panel-open'); 
+            switch (panelId) {
+                case 'inventoryManagementPanel': renderInventoryPanel('stock'); break;
+                case 'historyPanel': renderHistoryPanel(); break;
+                case 'notesPanel': renderNotesPanel(); calculateDailyCashBalance(); break;
+                case 'analysisPanel': renderAnalysisPanel(); break;
+                case 'calculatorPanel': clearDisplay(); break;
+                case 'parkedSalesPanel': renderParkedSalesPanel(); break;
+                case 'shiftHistoryPanel': renderShiftHistoryPanel(); break;
+                case 'productionPanel': renderProductionPanel(); break; 
+                case 'settingsPanel': renderSettingsPanel(); break;
+            }
+        }, 10); 
+    }
+}
+
+// =======================================================
+// SETTINGS & BRANDING LOGIC
+// =======================================================
+function renderSettingsPanel() {
+    document.getElementById('settingsCompanyName').value = companyName === "VK POS" ? "" : companyName;
+}
+
+function saveSettings() {
+    const newName = document.getElementById('settingsCompanyName').value.trim();
+    if (newName) {
+        companyName = newName;
+    } else {
+        companyName = "VK POS";
+    }
+    localStorage.setItem('posCompanyName', companyName);
+    updateHeaderTitle();
+    togglePanel('settingsPanel');
+    alert("Settings Saved!");
+}
+
+function updateHeaderTitle() {
+    // Updates the main visible header
+    document.getElementById('mainHeaderTitle').innerText = `VK POS - ${companyName}`;
+}
+
+// =======================================================
+// PRODUCTION REPORT LOGIC (UPDATED: DAILY ONLY)
+// =======================================================
+
+function renderProductionPanel() {
+    const container = document.getElementById('productionContent');
+    container.innerHTML = '';
+    
+    if (items.length === 0) {
+        container.innerHTML = '<p style="text-align: center; color: #888; padding: 20px;">No inventory items found.</p>';
+        return;
+    }
+
+    // 1. Calculate Sales per Item based on TODAY'S Transaction History
+    const salesCountMap = {};
+    const todayStr = new Date().toDateString(); // Get today's date string
+
+    transactions.forEach(tx => {
+        // FILTER: Only process transactions from Today
+        if (new Date(tx.timestamp).toDateString() !== todayStr) return;
+
+        tx.items.forEach(i => {
+            if(!salesCountMap[i.name]) salesCountMap[i.name] = 0;
+            salesCountMap[i.name] += i.quantity;
+        });
+    });
+
+    // 2. Build the Table Headers
+    let tableHtml = `
+        <table class="prod-table">
+            <thead>
+                <tr>
+                    <th>Item Name</th>
+                    <th>Price</th>
+                    <th>Sold (Today)</th>
+                    <th>Remaining</th>
+                    <th>Produced (Daily)</th>
+                    <th>Sold Value</th>
+                    <th>Rem. Value</th>
+                    <th>Prod. Value</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    // 3. Variables for Grand Totals
+    let grandTotalSoldVal = 0;
+    let grandTotalRemVal = 0;
+    let grandTotalProdVal = 0;
+
+    // 4. Iterate items and calculate rows
+    items.forEach(item => {
+        const price = parseFloat(item.price);
+        const remainingQty = parseInt(item.stock);
+        const soldQty = salesCountMap[item.name] || 0;
+        
+        // Logic: Produced (Today) = Sold (Today) + Remaining (Now)
+        const producedQty = soldQty + remainingQty; 
+
+        const soldVal = soldQty * price;
+        const remainingVal = remainingQty * price;
+        const producedVal = producedQty * price;
+
+        grandTotalSoldVal += soldVal;
+        grandTotalRemVal += remainingVal;
+        grandTotalProdVal += producedVal;
+
+        tableHtml += `
+            <tr>
+                <td>${item.name}</td>
+                <td>₹${price.toFixed(2)}</td>
+                <td style="color: #4caf50;">${soldQty}</td>
+                <td style="color: #ff9800;">${remainingQty}</td>
+                <td style="font-weight: bold;">${producedQty}</td>
+                <td class="val-cell" style="color: #4caf50;">₹${soldVal.toFixed(2)}</td>
+                <td class="val-cell" style="color: #ff9800;">₹${remainingVal.toFixed(2)}</td>
+                <td class="val-cell">₹${producedVal.toFixed(2)}</td>
+            </tr>
+        `;
+    });
+
+    // 5. Add Grand Total Row
+    tableHtml += `
+            <tr class="total-prod-row">
+                <td colspan="5" style="text-align: right;">GRAND TOTALS:</td>
+                <td style="color: #00695c;">₹${grandTotalSoldVal.toFixed(2)}</td>
+                <td style="color: #e65100;">₹${grandTotalRemVal.toFixed(2)}</td>
+                <td style="color: #00bcd4;">₹${grandTotalProdVal.toFixed(2)}</td>
+            </tr>
+            </tbody>
+        </table>
+    `;
+
+    container.innerHTML = tableHtml;
+}
+
+
+// =======================================================
+// STANDARD FUNCTIONS
+// =======================================================
+
+function formatDateForDisplay(isoString) {
+    if (!isoString) return 'N/A';
+    try { return new Date(isoString).toLocaleString(); } catch (e) { return 'Invalid Date'; }
+}
+function formatDateForReceipt(isoString) {
+    if (!isoString) return 'N/A';
+    try {
+        const date = new Date(isoString);
+        const datePart = date.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
+        const timePart = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+        return `${datePart}, ${timePart}`;
+    } catch (e) { return 'Invalid Date'; }
+}
+
+function saveData() {
+    try {
+        localStorage.setItem('posItems', JSON.stringify(items));
+        localStorage.setItem('posTransactions', JSON.stringify(transactions));
+        localStorage.setItem('posShopNotes', JSON.stringify(shopNotes));
+        localStorage.setItem('posDailyPayNotes', JSON.stringify(dailyPayNotes)); 
+        localStorage.setItem('posNextNoteId', nextNoteId);
+        localStorage.setItem('posNextTokenId', nextTokenId);
+        localStorage.setItem('posParkedSales', JSON.stringify(parkedSales)); 
+        localStorage.setItem('posNextParkedId', nextParkedId); 
+        localStorage.setItem('posExpiryNotes', JSON.stringify(expiryNotes)); 
+        localStorage.setItem('posNewArrivalsLog', JSON.stringify(newArrivalsLog)); 
+        localStorage.setItem('posNextArrivalId', nextArrivalId); 
+        localStorage.setItem('posShifts', JSON.stringify(shifts));
+        localStorage.setItem('posCurrentShift', JSON.stringify(currentShift));
+        localStorage.setItem('posNextShiftId', nextShiftId);
+    } catch (e) { console.error("Error saving data:", e); }
+}
+
+function loadData() {
+    try {
+        loadLayoutPreference();
+
+        // Load Company Name
+        const storedName = localStorage.getItem('posCompanyName');
+        if (storedName) {
+            companyName = storedName;
+        }
+        updateHeaderTitle(); // Apply name to header
+
+        const storedItems = localStorage.getItem('posItems');
+        const storedTransactions = localStorage.getItem('posTransactions');
+        const storedShopNotes = localStorage.getItem('posShopNotes');
+        const storedDailyPayNotes = localStorage.getItem('posDailyPayNotes'); 
+        const storedNextNoteId = localStorage.getItem('posNextNoteId');
+        const storedNextTokenId = localStorage.getItem('posNextTokenId');
+        const storedParkedSales = localStorage.getItem('posParkedSales'); 
+        const storedNextParkedId = localStorage.getItem('posNextParkedId'); 
+        const storedExpiryNotes = localStorage.getItem('posExpiryNotes'); 
+        const storedNewArrivalsLog = localStorage.getItem('posNewArrivalsLog'); 
+        const storedNextArrivalId = localStorage.getItem('posNextArrivalId'); 
+        const storedShifts = localStorage.getItem('posShifts');
+        const storedCurrentShift = localStorage.getItem('posCurrentShift');
+        const storedNextShiftId = localStorage.getItem('posNextShiftId');
+
+        const defaultItemMap = {
+            "Bread": { price: 40.00, stock: 50, barcode: "1234567890123" },
+            "Cake": { price: 10.00, stock: 50, barcode: "1112223334445" },
+            "Milk": { price: 15.00, stock: 50, barcode: "9876543210987" },
+            "Coffee": { price: 25.00, stock: 50, barcode: "4567890123456" },
+        };
+        
+        if (storedItems) items = JSON.parse(storedItems).map(item => ({...item, price: parseFloat(item.price)})); 
+        else items = []; 
+        
+        // Initialize simple defaults if empty
+        if (items.length === 0) {
+            const defaultItemNames = Object.keys(defaultItemMap);
+            defaultItemNames.forEach(name => {
+                 items.push({ name: name, ...defaultItemMap[name] });
+            });
+        }
+
+        if (storedTransactions) transactions = JSON.parse(storedTransactions);
+        transactions = transactions.map(tx => ({
+            ...tx, items: tx.items.map(i => ({...i, price: parseFloat(i.price)})),
+            paymentMethod: tx.paymentMethod || 'Cash',
+            timestamp: tx.timestamp.includes('/') ? new Date(tx.timestamp).toISOString() : tx.timestamp,
+            tokenId: tx.tokenId || transactions.indexOf(tx) + 1 
+        }));
+
+        if (storedShopNotes) shopNotes = JSON.parse(storedShopNotes).map(bill => {
+            if (!bill.paymentHistory) {
+                bill.paymentHistory = [];
+                const isoTimestamp = bill.timestamp.includes('/') ? new Date(bill.timestamp).toISOString() : bill.timestamp;
+                bill.timestamp = isoTimestamp;
+                if (bill.paid > 0) bill.paymentHistory.push({ amount: bill.paid, timestamp: isoTimestamp, method: 'Cash' });
+            }
+            bill.paymentHistory = bill.paymentHistory.map(p => ({...p, method: p.method || 'Cash', amount: parseFloat(p.amount)}));
+            return bill;
+        });
+        
+        if (storedDailyPayNotes) dailyPayNotes = JSON.parse(storedDailyPayNotes);
+        if (storedParkedSales) parkedSales = JSON.parse(storedParkedSales);
+        if (storedExpiryNotes) expiryNotes = JSON.parse(storedExpiryNotes); 
+        if (storedNewArrivalsLog) newArrivalsLog = JSON.parse(storedNewArrivalsLog); 
+        if (storedShifts) shifts = JSON.parse(storedShifts);
+        if (storedCurrentShift && storedCurrentShift !== 'null') currentShift = JSON.parse(storedCurrentShift);
+        if (storedNextNoteId) nextNoteId = parseInt(storedNextNoteId); 
+        if (storedNextTokenId) nextTokenId = parseInt(storedNextTokenId); 
+        if (storedNextParkedId) nextParkedId = parseInt(storedNextParkedId); 
+        if (storedNextArrivalId) nextArrivalId = parseInt(storedNextArrivalId); 
+        if (storedNextShiftId) nextShiftId = parseInt(storedNextShiftId);
+
+        document.getElementById('itemsList').innerHTML = '<p id="searchTip" style="text-align: center; color: #aaa; margin-top: 20px;">Type a name or barcode above to see product results.</p>';
+
+        updateCart();
+        updateParkedSalesCount(); 
+        updateShiftButtons(); 
+    } catch (e) { console.error("Error loading data.", e); }
+}
+
+// Calculator Logic
+let currentInput = '0';
+let result = '';
+let isCalculated = false;
+function getCalcElements() { return { input: document.getElementById('calcInput'), result: document.getElementById('calcResult') }; }
+function updateCalculatorDisplay() {
+    const { input, result: resultEl } = getCalcElements();
+    input.innerText = currentInput; resultEl.innerText = result;
+    if (input) input.scrollLeft = input.scrollWidth; 
+}
+function clearDisplay() { currentInput = '0'; result = ''; isCalculated = false; updateCalculatorDisplay(); }
+function deleteLast() {
+    if (currentInput === '0' || isCalculated) { clearDisplay(); return; }
+    currentInput = currentInput.slice(0, -1);
+    if (currentInput.length === 0 || currentInput === '-') currentInput = '0';
+    calculateIntermediateResult();
+}
+function calculateIntermediateResult() {
+    if (isCalculated) return;
+    try {
+        let expression = currentInput.replace(/×/g, '*').replace(/÷/g, '/');
+        const safeExpression = expression.replace(/([+\-*/]\.?|[^0-9.])$/, '');
+        if (safeExpression.trim().length > 0 && !/[+\-*/]$/.test(currentInput)) {
+            const tempResult = eval(safeExpression);
+            result = isFinite(tempResult) ? tempResult.toFixed(2).replace(/\.00$|0$/, '') : '';
+        } else { result = ''; }
+    } catch (e) { result = ''; }
+    updateCalculatorDisplay();
+}
+function appendToDisplay(value) {
+    if (isCalculated) {
+        if (/[+\-*/]/.test(value)) currentInput = result + value;
+        else currentInput = value;
+        result = ''; isCalculated = false;
+    } else {
+        if (currentInput === '0' && value !== '.' && value !== '(' && value !== ')') currentInput = value;
+        else currentInput += value;
+    }
+    calculateIntermediateResult();
+}
+function calculateResult() {
+    try {
+        let expression = currentInput.replace(/×/g, '*').replace(/÷/g, '/');
+        const finalResult = eval(expression.replace(/([+\-*/%]\.?|[^0-9.])$/, ''));
+        if (isFinite(finalResult)) {
+            result = finalResult.toFixed(2).replace(/\.00$|0$/, ''); 
+            currentInput = finalResult.toFixed(2).replace(/\.00$|0$/, ''); 
+            isCalculated = true;
+        } else { result = 'Error'; currentInput = '0'; }
+    } catch (e) { result = 'Error'; currentInput = '0'; }
+    updateCalculatorDisplay();
+}
+
+// Shift Logic
+function updateShiftButtons() {
+    const startBtn = document.getElementById('startShiftBtn');
+    const closeBtn = document.getElementById('closeShiftBtn');
+    if (currentShift) {
+        startBtn.disabled = true; startBtn.innerText = `Shift #${currentShift.id} Active`; closeBtn.disabled = false;
+    } else {
+        startBtn.disabled = false; startBtn.innerText = `Start Shift 🚀`; closeBtn.disabled = true;
+    }
+}
+function startShift() {
+    if (currentShift) { alert(`Shift #${currentShift.id} already active.`); return; }
+    const startingCashInput = prompt("Enter starting cash (float):", "500.00");
+    const startingCash = parseFloat(startingCashInput) || 0.00;
+    if (isNaN(startingCash)) { alert("Invalid amount."); return; }
+    
+    currentShift = {
+        id: nextShiftId++,
+        startTime: new Date().toISOString(),
+        startingCash: startingCash,
+        startTransactionCount: transactions.length,
+        startDailyPayNoteCount: dailyPayNotes.length,
+        startArrivalLogCount: newArrivalsLog.length, 
+        startInventorySnapshot: items.map(item => ({ name: item.name, stock: item.stock })),
+    };
+    alert(`Shift #${currentShift.id} started with ₹${startingCash.toFixed(2)}.`);
+    saveData(); updateShiftButtons();
+}
+function closeShift() {
+    if (!currentShift) { alert("No active shift."); return; }
+    if (!confirm(`Close Shift #${currentShift.id}?`)) return;
+    const endingCashInput = prompt("Enter final counted cash:", currentShift.startingCash.toFixed(2));
+    const endingCash = parseFloat(endingCashInput) || 0.00;
+    if (isNaN(endingCash)) { alert("Invalid amount."); return; }
+    
+    const shiftEnd = {
+        id: currentShift.id,
+        startTime: currentShift.startTime,
+        endTime: new Date().toISOString(),
+        startingCash: currentShift.startingCash,
+        endingCash: endingCash,
+        endTransactionCount: transactions.length,
+        endDailyPayNoteCount: dailyPayNotes.length,
+        endArrivalLogCount: newArrivalsLog.length, 
+        // Capture inventory at this exact moment for printing later
+        endInventorySnapshot: items.map(item => ({ name: item.name, stock: item.stock })),
+        startTransactionCount: currentShift.startTransactionCount,
+        startDailyPayNoteCount: currentShift.startDailyPayNoteCount,
+        startArrivalLogCount: currentShift.startArrivalLogCount, 
+        startInventorySnapshot: currentShift.startInventorySnapshot,
+    };
+    
+    const newTransactions = transactions.slice(shiftEnd.startTransactionCount);
+    let totalSales = newTransactions.reduce((sum, tx) => sum + tx.total, 0);
+    let totalCashReceived = newTransactions.reduce((sum, tx) => sum + tx.paid, 0);
+    const newDailyPayNotes = dailyPayNotes.slice(shiftEnd.startDailyPayNoteCount);
+    const totalExpenses = newDailyPayNotes.filter(n => n.type === 'Expense').reduce((sum, n) => sum + n.amount, 0);
+    const totalPayIn = newDailyPayNotes.filter(n => n.type === 'PayIn').reduce((sum, n) => sum + n.amount, 0);
+    const expectedCash = currentShift.startingCash + totalCashReceived + totalPayIn - totalExpenses;
+    const cashVariance = endingCash - expectedCash;
+    
+    // NEW: Get arrivals for this shift
+    const newArrivals = newArrivalsLog.slice(shiftEnd.startArrivalLogCount);
+    
+    shiftEnd.summary = { newTransactionCount: newTransactions.length, totalSales, totalCashReceived, totalExpenses, totalPayIn, expectedCash, cashVariance, newDailyPayNotes, newArrivals }; 
+    
+    shifts.push(shiftEnd);
+    // Reset daily logs after shift close
+    dailyPayNotes = []; 
+    newArrivalsLog = []; 
+    currentShift = null;
+    saveData(); updateShiftButtons(); printShiftReport(shiftEnd);
+    if (document.getElementById('notesPanel').classList.contains('panel-open')) renderNotesPanel();
+    alert(`Shift #${shiftEnd.id} closed.`);
+}
+function renderShiftHistoryPanel() {
+    const list = document.getElementById('shiftsList');
+    list.innerHTML = '';
+    if (shifts.length === 0) { list.innerHTML = '<p style="text-align: center; color: #888;">No closed shifts.</p>'; return; }
+    [...shifts].reverse().forEach(shift => {
+        const isVariance = Math.abs(shift.summary.cashVariance) > 0.005;
+        const card = document.createElement('div');
+        card.className = 'shift-card';
+        card.innerHTML = `
+            <div class="shift-header"><span style="color: #ff5722;">Shift ID: ${shift.id}</span><span style="font-size: 1.1em; color: #3f51b5;">Sales: ₹${shift.summary.totalSales.toFixed(2)}</span></div>
+            <div class="parked-summary">
+                 <small>Start: ${formatDateForDisplay(shift.startTime)}</small><br>
+                 <small>End: ${formatDateForDisplay(shift.endTime)}</small><br>
+                 <small style="font-weight: bold; color: ${isVariance ? '#d32f2f' : '#4caf50'};">Variance: ₹${shift.summary.cashVariance.toFixed(2)}</small>
+            </div>
+            <div class="shift-controls"><button class="print-shift-btn" onclick="printShiftReportById(${shift.id})">Reprint Report 🖨️</button></div>
+        `;
+        list.appendChild(card);
+    });
+}
+function printShiftReportById(shiftId) { const shift = shifts.find(s => s.id === shiftId); if (shift) printShiftReport(shift); }
+
+// UPDATED: PRINT SHIFT REPORT TO INCLUDE REMAINING STOCK & ITEM SALES AND NEW ARRIVALS
+function printShiftReport(shift) {
+    const formatAmount = (a) => parseFloat(a).toFixed(2);
+    
+    // 1. Calculate Product Breakdown for this specific shift
+    const allTxs = JSON.parse(localStorage.getItem('posTransactions') || '[]');
+    const shiftTransactions = allTxs.slice(shift.startTransactionCount, shift.endTransactionCount || undefined);
+
+    const soldItemsMap = {};
+    let totalUPI = 0;
+
+    shiftTransactions.forEach(tx => {
+        // Aggregate Item Sales
+        tx.items.forEach(item => {
+            if (!soldItemsMap[item.name]) soldItemsMap[item.name] = 0;
+            soldItemsMap[item.name] += item.quantity;
+        });
+
+        // Calculate UPI Total
+        if(tx.paymentMethod === 'UPI') {
+            totalUPI += tx.total; // Using total amount for UPI sales
+        }
+    });
+
+    let soldItemsHtml = '';
+    for (const [name, qty] of Object.entries(soldItemsMap)) {
+        soldItemsHtml += `<div class="receipt-line">${name} <span>${qty}</span></div>`;
+    }
+
+    // 2. Daily Pay / Expenses
+    let dailyPayHtml = '';
+    shift.summary.newDailyPayNotes.forEach(note => {
+        dailyPayHtml += `<div class="receipt-line" style="font-size: 0.9em;"><span>${note.description.substring(0, 20)}</span><span>${note.type === 'PayIn' ? '+' : '-'} ₹${formatAmount(note.amount)}</span></div>`;
+    });
+    
+    // 3. NEW ARRIVALS for the shift
+    let newArrivalsHtml = '';
+    let totalArrivalQty = 0;
+    if (shift.summary.newArrivals && shift.summary.newArrivals.length > 0) {
+        shift.summary.newArrivals.forEach(arrival => {
+            newArrivalsHtml += `<div class="receipt-line">${arrival.name} <span>${arrival.quantity}</span></div>`;
+            totalArrivalQty += arrival.quantity;
+        });
+        newArrivalsHtml = `
+            <div class="receipt-separator"></div>
+            <div class="shift-report-section">
+                <h5>NEW ARRIVALS (IN STOCK)</h5>
+                ${newArrivalsHtml}
+                <div class="receipt-line" style="font-weight: bold;">TOTAL ADDED: <span>${totalArrivalQty}</span></div>
+            </div>
+        `;
+    }
+
+    // 4. Generate Inventory List (Stock Remaining)
+    let inventoryHtml = '';
+    if (shift.endInventorySnapshot && shift.endInventorySnapshot.length > 0) {
+        inventoryHtml += `<div class="receipt-separator"></div><div class="shift-report-section"><h5>CLOSING STOCK</h5>`;
+        shift.endInventorySnapshot.forEach(item => {
+            inventoryHtml += `<div class="receipt-line">${item.name} <span>${item.stock}</span></div>`;
+        });
+        inventoryHtml += `</div>`;
+    }
+
+    // 5. Calculate Final "Expenses + Total Sales"
+    const expPlusSales = shift.summary.totalExpenses + shift.summary.totalSales;
+
+    const reportHtml = `
+        <div id="shiftReportContent" style="width: 100%; max-width: 80mm;">
+            <div class="receipt-header"><strong>${companyName}</strong><br>SHIFT REPORT #${shift.id}<br>Start: ${formatDateForReceipt(shift.startTime)}<br>End: ${formatDateForReceipt(shift.endTime)}</div>
+            
+            <div class="receipt-separator"></div>
+            
+            <div class="shift-report-section">
+                <h5>SALES SUMMARY</h5>
+                ${soldItemsHtml}
+                <div class="receipt-separator"></div>
+                <div class="receipt-line total-line-print"><strong>TOTAL SALES:</strong> <span><strong>₹${formatAmount(shift.summary.totalSales)}</strong></span></div>
+            </div>
+
+            <div class="receipt-separator"></div>
+
+            <div class="shift-report-section">
+                <h5>EXPENSES DETAILED</h5>
+                ${dailyPayHtml}
+            </div>
+
+            <div class="receipt-separator"></div>
+
+            <div class="shift-report-section">
+                <h5>CASH CALCULATION</h5>
+                <div class="receipt-line">Start Cash: <span>₹${formatAmount(shift.startingCash)}</span></div>
+                <div class="receipt-line">UPI Sales: <span>₹${formatAmount(totalUPI)}</span></div>
+                <div class="receipt-line">Total Sales: <span>₹${formatAmount(shift.summary.totalSales)}</span></div>
+                <div class="receipt-line">Add Expenses: <span>₹${formatAmount(shift.summary.totalExpenses)}</span></div>
+                <div class="receipt-separator"></div>
+                <div class="receipt-line total-line-print"><strong>EXPENSES + SALES:</strong> <span><strong>₹${formatAmount(expPlusSales)}</strong></span></div>
+            </div>
+
+            ${newArrivalsHtml}
+
+            ${inventoryHtml}
+            
+            <div class="receipt-footer">End of Report</div>
+            <div class="watermark-print">VK_GAMES_SOFTWARES</div>
+        </div>
+    `;
+    document.getElementById('receiptOutput').innerHTML = reportHtml; window.print();
+}
+
+// Cart & POS Logic
+function scanBarcode() {
+    const code = document.getElementById('searchInput').value.trim();
+    if (!code) { alert("Enter barcode first."); return; }
+    const item = items.find(i => i.barcode === code);
+    if (item) { addToCart(item.name); document.getElementById('searchInput').value = ''; filterItems(); } 
+    else { alert("Barcode not found."); }
+}
+function displayItems(list) {
+    const itemsList = document.getElementById('itemsList'); itemsList.innerHTML = '';
+    const query = document.getElementById('searchInput').value.toLowerCase().trim();
+    if (query === '') { itemsList.innerHTML = '<p id="searchTip" style="text-align: center; color: #aaa; margin-top: 20px;">Type a name or barcode above to see product results.</p>'; return; }
+    if (list.length === 0) { itemsList.innerHTML = `<p style="text-align: center; color: #ff5722; margin-top: 20px;">No products found.</p>`; return; }
+    list.forEach((item) => {
+        const div = document.createElement('div'); div.className = 'item';
+        if (item.stock <= 0) div.classList.add('out-of-stock'); else div.onclick = () => addToCart(item.name);
+        div.innerHTML = `<div>${item.name} - ₹${parseFloat(item.price).toFixed(2)}</div><div class="item-stock">Stock: ${item.stock}</div>`;
+        itemsList.appendChild(div);
+    });
+}
+function filterItems() {
+    const query = document.getElementById('searchInput').value.toLowerCase().trim();
+    if (query === '') { displayItems([]); return; }
+    const filtered = items.filter(item => item.name.toLowerCase().includes(query) || (item.barcode && item.barcode.includes(query)));
+    displayItems(filtered);
+}
+function addToCart(itemName) {
+    const cartIndex = cart.findIndex(item => item.name === itemName);
+    const itemDetails = items.find(item => item.name === itemName);
+    if (!itemDetails) return;
+    if (itemDetails.stock === 0) { alert("Out of stock."); return; }
+    if (getCartQuantity(itemName) >= itemDetails.stock) { alert(`Only ${itemDetails.stock} in stock.`); return; }
+    if (cartIndex > -1) cart[cartIndex].quantity += 1;
+    else cart.push({...itemDetails, price: parseFloat(itemDetails.price), quantity: 1});
+    updateCart();
+}
+function getCartQuantity(itemName) { const cartItem = cart.find(item => item.name === itemName); return cartItem ? cartItem.quantity : 0; }
+function updateQuantity(cartIndex, change) {
+    if (cartIndex > -1) {
+        const itemInCart = cart[cartIndex];
+        const itemDetails = items.find(item => item.name === itemInCart.name);
+        if (change > 0 && itemDetails && itemInCart.quantity >= itemDetails.stock) { alert(`Limit reached.`); return; }
+        itemInCart.quantity += change;
+        if (itemInCart.quantity <= 0) cart.splice(cartIndex, 1);
+    }
+    updateCart();
+}
+function completeSale() {
+    if (cart.length === 0) return;
+    const grandTotal = cart.reduce((total, item) => total + (parseFloat(item.price) * item.quantity), 0);
+    const moneyReceived = parseFloat(document.getElementById('moneyReceived').value) || 0;
+    const paymentMethod = document.getElementById('paymentMethod').value; 
+    if (moneyReceived < grandTotal && paymentMethod !== 'Credit') { alert("Payment incomplete."); return; }
+    
+    cart.forEach(cartItem => {
+        const inventoryItem = items.find(i => i.name === cartItem.name);
+        if (inventoryItem) { inventoryItem.stock -= cartItem.quantity; if (inventoryItem.stock < 0) inventoryItem.stock = 0; }
+    });
+    
+    const changeAmount = moneyReceived - grandTotal;
+    if (paymentMethod === 'Credit' && changeAmount < 0) {
+        shopNotes.push({ id: nextNoteId++, description: `Credit: ${cart.map(i => `${i.name}x${i.quantity}`).join(', ')}`, total: grandTotal, paid: moneyReceived, timestamp: new Date().toISOString(), paymentHistory: (moneyReceived > 0) ? [{ amount: moneyReceived, timestamp: new Date().toISOString(), method: 'Down Payment' }] : [] });
+    }
+
+    const transaction = { timestamp: new Date().toISOString(), total: grandTotal, paid: moneyReceived, change: changeAmount, items: cart.map(item => ({...item})), paymentMethod: paymentMethod, tokenId: nextTokenId++ };
+    transactions.push(transaction);
+    alert(`Sale Completed! Change: ₹${changeAmount.toFixed(2)}.`);
+    cart = []; saveData(); document.getElementById('moneyReceived').value = grandTotal.toFixed(2); updateCart(); 
+}
+function updateCart() {
+    const cartItems = document.getElementById('cartItems'); cartItems.innerHTML = ''; let grandTotal = 0;
+    cart.forEach((item, index) => {
+        const subTotal = parseFloat(item.price) * item.quantity; grandTotal += subTotal;
+        const div = document.createElement('div'); div.className = 'cart-item';
+        div.innerHTML = `<div class="item-details">${item.name} (₹${item.price.toFixed(2)}) x ${item.quantity} = ₹${subTotal.toFixed(2)}</div><div class="qty-controls"><button onclick="updateQuantity(${index}, -1)">–</button><button onclick="updateQuantity(${index}, 1)">+</button></div>`;
+        cartItems.appendChild(div);
+    });
+    document.getElementById('subTotal').innerText = grandTotal.toFixed(2);
+    if (cart.length > 0 && parseFloat(document.getElementById('moneyReceived').value) < grandTotal && document.getElementById('paymentMethod').value !== 'Credit') { document.getElementById('moneyReceived').value = grandTotal.toFixed(2); }
+    if (cart.length === 0) document.getElementById('moneyReceived').value = "0.00";
+    document.getElementById('completeSaleBtn').disabled = cart.length === 0;
+    document.getElementById('suspendSaleBtn').disabled = cart.length === 0;
+    filterItems(); calculateChange();
+}
+function calculateChange() {
+    let grandTotal = cart.reduce((total, item) => total + (parseFloat(item.price) * item.quantity), 0);
+    const moneyReceived = parseFloat(document.getElementById('moneyReceived').value) || 0;
+    let remainingChange = moneyReceived - grandTotal;
+    const changeLabel = document.getElementById('changeLabel');
+    const changeAmount = document.getElementById('remainingChange');
+    const changeLine = document.getElementById('changeLine');
+    if (remainingChange < -0.005) { changeLabel.innerText = "Balance Due:"; changeAmount.innerText = (remainingChange * -1).toFixed(2); changeLine.className = 'total change-line balance-due'; }
+    else if (remainingChange > 0.005) { changeLabel.innerText = "Change:"; changeAmount.innerText = remainingChange.toFixed(2); changeLine.className = 'total change-line change-due'; }
+    else { changeLabel.innerText = "Change:"; changeAmount.innerText = "0.00"; changeLine.className = 'total change-line exact-payment'; }
+}
+
+// Printing
+function printLastTransaction(type = 'bill') {
+    if (transactions.length === 0) { alert("No history."); return; }
+    printTransactionById(transactions.length - 1, type);
+}
+function printBill(tx, txId) {
+    let itemsHtml = tx.items.map(item => `<div class="receipt-line">${item.name} x ${item.quantity}<span>₹${(item.price * item.quantity).toFixed(2)}</span></div>`).join('');
+    return `<div id="receiptContent" style="width: 100%;"><div class="receipt-header"><strong>${companyName}</strong><br>Receipt #${txId}<br>${formatDateForReceipt(tx.timestamp)}</div><div class="receipt-separator"></div>${itemsHtml}<div class="receipt-separator"></div><div class="receipt-line total-line-print"><strong>TOTAL:</strong> <span><strong>₹${tx.total.toFixed(2)}</strong></span></div><div class="receipt-footer">Thank You!</div><div class="watermark-print">VK_GAMES_SOFTWARES</div></div>`;
+}
+function printToken(tx) {
+    let tokenItems = tx.items.map((item, i) => `<div class="token-header">${companyName}<br>TOKEN #${tx.tokenId}</div><div style="display:flex;justify-content:space-between;font-weight:bold;"><span>${item.name}</span><span>QTY: ${item.quantity}</span></div>${i < tx.items.length-1 ? '<div style="text-align:center;margin:10px 0;">✂︎----------------</div>' : ''}`).join('');
+    return `<div id="tokenContent" style="width: 100%;">${tokenItems}<div class="watermark-print">VK_GAMES_SOFTWARES</div></div>`;
+}
+function printTransactionById(index, type = 'bill') {
+    if (index >= 0 && index < transactions.length) {
+        const tx = transactions[index];
+        document.getElementById('receiptOutput').innerHTML = (type === 'token') ? printToken(tx) : printBill(tx, index + 1);
+        window.print();
+    }
+}
+
+// Misc Logic (Parked Sales, History, Notes, Inventory)
+function updateParkedSalesCount() { document.getElementById('parkedSalesCount').innerText = parkedSales.length; }
+function suspendSale() {
+    if (cart.length === 0) return;
+    let name = prompt("Name for parked sale:", `Sale #${nextParkedId}`);
+    if (name === null) name = `Sale #${nextParkedId}`;
+    parkedSales.push({ id: nextParkedId++, name: name, timestamp: new Date().toISOString(), items: cart.map(i=>({...i})), total: cart.reduce((t,i)=>t+(i.price*i.quantity),0), moneyReceived: parseFloat(document.getElementById('moneyReceived').value)||0, paymentMethod: document.getElementById('paymentMethod').value });
+    cart = []; document.getElementById('moneyReceived').value='0.00'; alert("Sale Suspended."); saveData(); updateCart(); updateParkedSalesCount();
+}
+function recallParkedSale(id) {
+    if (cart.length > 0 && !confirm("Overwrite current cart?")) return;
+    const index = parkedSales.findIndex(s => s.id === id); if (index === -1) return;
+    const sale = parkedSales[index]; cart = sale.items.map(i=>({...i}));
+    document.getElementById('moneyReceived').value = sale.moneyReceived.toFixed(2); document.getElementById('paymentMethod').value = sale.paymentMethod;
+    parkedSales.splice(index, 1); saveData(); updateCart(); updateParkedSalesCount(); togglePanel('parkedSalesPanel');
+}
+function renderParkedSalesPanel() {
+    const list = document.getElementById('parkedSalesList'); list.innerHTML = '';
+    if (parkedSales.length === 0) { list.innerHTML = '<p style="text-align:center;color:#888;">No parked sales.</p>'; return; }
+    parkedSales.forEach(sale => {
+        const div = document.createElement('div'); div.className = 'parked-sale-card';
+        div.innerHTML = `<div class="parked-sale-header"><span style="color:#3f51b5;">${sale.name}</span><span>₹${sale.total.toFixed(2)}</span></div><div class="parked-sale-controls"><button class="recall-btn" onclick="recallParkedSale(${sale.id})">Recall</button></div>`;
+        list.appendChild(div);
+    });
+}
+// ------------------------------------------------------------------
+// UPDATED HISTORY PANEL WITH RE-EDIT FUNCTION
+// ------------------------------------------------------------------
+function renderHistoryPanel() {
+    const list = document.getElementById('historyList'); list.innerHTML = '';
+    [...transactions].reverse().forEach((tx, i) => {
+        const originalIndex = transactions.length - 1 - i;
+        
+        const div = document.createElement('div'); div.className = 'transaction-card';
+        div.innerHTML = `
+            <div class="transaction-header">
+                <span>Receipt #${transactions.length-i}</span>
+                <span>₹${tx.total.toFixed(2)}</span>
+            </div>
+            <div style="font-size:0.8em;color:#666;">
+                ${tx.items.map(i=>`${i.name} x ${i.quantity}`).join(', ')}
+            </div>
+            <div style="font-size:0.8em;color:#aaa;margin-top:4px;">
+                ${formatDateForDisplay(tx.timestamp)}
+            </div>
+            <div class="history-controls" style="margin-top:10px; display:flex; gap:10px;">
+                <button class="reprint-btn" onclick="printTransactionById(${originalIndex})" style="flex:1;">Reprint 🖨️</button>
+                <button class="edit-btn" onclick="editTransaction(${originalIndex})" style="flex:1; background:#ff9800;">Re-Edit ✏️</button>
+            </div>`;
+        list.appendChild(div);
+    });
+}
+
+function editTransaction(index) {
+    if (cart.length > 0) {
+        if (!confirm("Your current cart is not empty. Re-editing this bill will overwrite current cart. Continue?")) return;
+    }
+    if (!confirm("Are you sure you want to Edit this bill? \n\n⚠️ This will DELETE the bill from history, RETURN items to stock, and move them to the cart for modification.")) return;
+
+    const tx = transactions[index];
+    
+    // 1. Restore Stock
+    tx.items.forEach(txItem => {
+        const inventoryItem = items.find(i => i.name === txItem.name);
+        if (inventoryItem) {
+            inventoryItem.stock += txItem.quantity;
+        }
+    });
+
+    // 2. Load into Cart
+    cart = tx.items.map(i => ({...i}));
+
+    // 3. Restore Input Values (Optional but helpful)
+    document.getElementById('moneyReceived').value = tx.paid.toFixed(2);
+    document.getElementById('paymentMethod').value = tx.paymentMethod;
+
+    // 4. Remove from History
+    transactions.splice(index, 1);
+
+    // 5. Save and Update UI
+    saveData();
+    updateCart();
+    togglePanel('historyPanel'); // Close history to show cart
+    alert("Bill moved to cart! Stock has been restored temporarily. \nMake your changes and checkout again.");
+}
+
+// ------------------------------------------------------------------
+// UPDATED INVENTORY PANEL LOGIC (Moved Add Form to Top & Added Search)
+// ------------------------------------------------------------------
+function renderInventoryPanel(view='stock') {
+    const panel = document.getElementById('inventoryManagementPanel');
+    const header = `<div class="panel-header"><h4>Inventory 📦</h4><button onclick="togglePanel('inventoryManagementPanel')" class="panel-close-btn">Close ✕</button></div>`;
+    const tabs = `
+        <div style="display:flex;margin-bottom:15px;">
+            <button onclick="renderInventoryPanel('stock')" style="flex:1;padding:10px;background:${view==='stock'?'#00bcd4':'#e0f7fa'};color:${view==='stock'?'white':'#333'};border:none;">Stock Edit</button>
+            <button onclick="renderInventoryPanel('arrivals')" style="flex:1;padding:10px;background:${view==='arrivals'?'#4caf50':'#e0f7fa'};color:${view==='arrivals'?'white':'#333'};border:none;">New Arrivals</button>
+            <button onclick="renderInventoryPanel('expiry')" style="flex:1;padding:10px;background:${view==='expiry'?'#ff5722':'#e0f7fa'};color:${view==='expiry'?'white':'#333'};border:none;">Expiry</button>
+        </div>`;
+    let content = '';
+
+    if (view === 'stock') {
+        // 1. ADD NEW ITEM FORM (MOVED TO TOP)
+        const addForm = `
+        <div style="margin-bottom:15px; padding:15px; background:#e8f5e9; border: 2px dashed #4caf50; border-radius: 8px;">
+            <h5 style="margin-top:0; color:#2e7d32;">➕ Add New Item to Database</h5>
+            <input id="newPName" placeholder="Item Name (e.g. Burger)" style="width:100%; margin-bottom:5px;">
+            <div style="display:flex; gap:5px;">
+                <input id="newPPrice" type="number" placeholder="Price (₹)" style="flex:1;">
+                <input id="newPStock" type="number" placeholder="Initial Stock" style="flex:1;">
+            </div>
+            <button onclick="addNewProduct()" style="width:100%; margin-top:10px; background:#4caf50; color:white; padding:10px; border:none; border-radius:4px; font-weight:bold;">Add Item</button>
+        </div>
+        `;
+
+        // 2. SEARCH BAR (NEW)
+        const searchBar = `
+        <div style="position:sticky; top:0; z-index:5; background:#fff; padding-bottom:10px;">
+            <input type="text" id="inventorySearchInput" placeholder="🔍 Search Stock items to edit..." onkeyup="filterInventoryList()" style="width:100%; padding:10px; border:1px solid #ccc; border-radius:4px;">
+        </div>
+        `;
+
+        // 3. EXISTING ITEMS LIST
+        // Added class 'inventory-item-edit' to target them for filtering
+        const itemsList = items.map(item => `
+            <div class="inventory-item inventory-item-edit">
+                <div style="font-weight:bold; font-size:1.1em; color:#00bcd4;">${item.name}</div>
+                <div class="inventory-inputs" style="display:flex; gap:5px; margin-top:5px; align-items:center;">
+                    <span style="font-size:0.9em;">Price: ₹</span><input type="number" value="${item.price}" onchange="updateInventory('${item.name}','price',this.value)" style="flex:1;">
+                    <span style="font-size:0.9em;">Stock:</span><input type="number" value="${item.stock}" onchange="updateInventory('${item.name}','stock',this.value)" style="flex:1; font-weight:bold;">
+                </div>
+                <input type="text" value="${item.barcode||''}" onchange="updateInventory('${item.name}','barcode',this.value)" placeholder="Barcode" style="width:100%; margin-top:5px; font-size:0.9em; color:#777;">
+            </div>
+        `).join('');
+
+        content = addForm + searchBar + '<div id="inventoryListContainer">' + itemsList + '</div>';
+
+    } else if (view === 'arrivals') {
+        content = `
+            <div class="new-arrival-form" style="padding:15px;background:#e8f5e9;border-radius:8px;margin-bottom:15px;">
+                <h5 style="margin-top:0;color:#388e3c;">Log New Stock Arrival 📦+</h5>
+                <input type="text" id="arrivalItemName" placeholder="Item Name (e.g., Bread)" />
+                <input type="number" id="arrivalItemPrice" placeholder="Price (₹)" min="0.01" step="0.01" />
+                <input type="number" id="arrivalItemQuantity" placeholder="Quantity/Stock" min="1" step="1" />
+                <input type="number" id="arrivalShelfLife" placeholder="Shelf Life (Days)" min="1" step="1" />
+                <button onclick="addNewProductArrival()">Log Arrival & Update Stock</button>
+            </div>
+            <h5 style="margin-top:0;color:#3f51b5;">Today's Arrivals Log:</h5>
+            <div id="arrivalsLogList">
+                ${newArrivalsLog.map(n => `<div class="arrival-log-item"><b>${n.name}</b> x ${n.quantity} @ ₹${n.price} | Shelf: ${n.shelfLifeDays} days</div>`).join('')}
+                ${newArrivalsLog.length === 0 ? '<p style="text-align:center;color:#888;">No arrivals logged for this shift.</p>' : ''}
+            </div>
+        `;
+    } else { // view === 'expiry'
+        content = `<div style="padding:10px;background:#e0f7fa;"><select id="expiryItemName"><option value="">Select</option>${items.map(i=>`<option>${i.name}</option>`).join('')}</select><input type="date" id="arrivalDate"><input type="number" id="shelfLifeDays" value="2"><button onclick="addExpiryNote()">Log Expiry</button></div>` + expiryNotes.map(n => `<div class="inventory-item"><b>${n.itemName}</b><br>Expires: ${n.expiryDate}</div>`).join('');
+    }
+    panel.innerHTML = header + tabs + content;
+}
+
+// NEW FUNCTION: Filter Inventory List
+function filterInventoryList() {
+    const input = document.getElementById('inventorySearchInput');
+    const filter = input.value.toLowerCase();
+    const nodes = document.getElementsByClassName('inventory-item-edit');
+    
+    for (let i = 0; i < nodes.length; i++) {
+        // Check text content (Name) and input values (Barcode)
+        const txtValue = nodes[i].textContent || nodes[i].innerText;
+        const inputs = nodes[i].getElementsByTagName('input');
+        let barcodeVal = "";
+        if (inputs.length > 2) barcodeVal = inputs[2].value; // Barcode is usually the 3rd input in that block
+
+        if (txtValue.toLowerCase().indexOf(filter) > -1 || barcodeVal.toLowerCase().indexOf(filter) > -1) {
+            nodes[i].style.display = "";
+        } else {
+            nodes[i].style.display = "none";
+        }
+    }
+}
+
+function updateInventory(name, field, val) {
+    const i = items.findIndex(x => x.name === name);
+    if (i > -1) { items[i][field] = (field==='price')?parseFloat(val).toFixed(2):(field==='stock'?parseInt(val):val); saveData(); }
+}
+function addNewProduct() {
+    const n=document.getElementById('newPName').value, p=parseFloat(document.getElementById('newPPrice').value), s=parseInt(document.getElementById('newPStock').value);
+    if(n&&p&&!isNaN(s)){items.push({name:n,price:p.toFixed(2),stock:s,barcode:''}); saveData(); renderInventoryPanel('stock');}
+}
+// NEW FUNCTION: Adds new arrival and updates/creates product
+function addNewProductArrival() {
+    const name = document.getElementById('arrivalItemName').value.trim();
+    const price = parseFloat(document.getElementById('arrivalItemPrice').value);
+    const quantity = parseInt(document.getElementById('arrivalItemQuantity').value);
+    const shelfLifeDays = parseInt(document.getElementById('arrivalShelfLife').value);
+
+    if (!name || isNaN(price) || isNaN(quantity) || isNaN(shelfLifeDays) || quantity <= 0 || price <= 0) {
+        alert("Please enter a valid Name, Price, Quantity (must be > 0), and Shelf Life (Days).");
+        return;
+    }
+
+    const itemIndex = items.findIndex(item => item.name.toLowerCase() === name.toLowerCase());
+    
+    // 1. Update/Create Product in Inventory
+    if (itemIndex > -1) {
+        // Update existing item's stock and possibly price
+        items[itemIndex].stock += quantity;
+        items[itemIndex].price = price.toFixed(2);
+        alert(`Stock for ${name} updated! New Stock: ${items[itemIndex].stock}`);
+    } else {
+        // Add new product
+        items.push({ name: name, price: price.toFixed(2), stock: quantity, barcode: '' });
+        alert(`New product ${name} added with stock ${quantity}.`);
+    }
+
+    // 2. Log the arrival (for shift report and tracking)
+    newArrivalsLog.push({ 
+        id: nextArrivalId++, 
+        name: name, 
+        price: price.toFixed(2), 
+        quantity: quantity, 
+        shelfLifeDays: shelfLifeDays, 
+        timestamp: new Date().toISOString() 
+    });
+
+    // 3. Clear form and update view
+    document.getElementById('arrivalItemName').value = '';
+    document.getElementById('arrivalItemPrice').value = '';
+    document.getElementById('arrivalItemQuantity').value = '';
+    document.getElementById('arrivalShelfLife').value = '';
+
+    saveData(); 
+    renderInventoryPanel('arrivals'); 
+}
+
+function addExpiryNote(){
+    const n=document.getElementById('expiryItemName').value, d=document.getElementById('arrivalDate').value, l=parseInt(document.getElementById('shelfLifeDays').value);
+    if(n&&d&&l){ const ex=new Date(d); ex.setDate(ex.getDate()+l); expiryNotes.push({id:Date.now(),itemName:n,expiryDate:ex.toISOString().split('T')[0],arrivalDate:d,shelfLifeDays:l}); saveData(); renderInventoryPanel('expiry'); }
+}
+function addBill(){
+    const d=document.getElementById('billDescription').value, t=parseFloat(document.getElementById('billTotal').value), p=parseFloat(document.getElementById('billPaid').value);
+    if(d&&t){shopNotes.push({id:nextNoteId++,description:d,total:t,paid:p||0,timestamp:new Date().toISOString(),paymentHistory:p>0?[{amount:p,timestamp:new Date().toISOString(),method:'Initial'}]:[]}); saveData(); renderNotesPanel();}
+}
+function addDailyPayNote(){
+    const d=document.getElementById('dailyPayDescription').value, a=parseFloat(document.getElementById('dailyPayAmount').value), t=document.getElementById('dailyPayType').value;
+    if(d&&a){dailyPayNotes.push({id:nextNoteId++,description:d,amount:a,type:t,timestamp:new Date().toISOString()}); saveData(); renderNotesPanel(); calculateDailyCashBalance();}
+}
+function calculateDailyCashBalance() {
+    const today = new Date().toDateString();
+    // Only include cash received in transactions (excluding Credit sales unless a down payment was made)
+    const sales = transactions.filter(t=>new Date(t.timestamp).toDateString()===today && (t.paymentMethod === 'Cash' || t.paymentMethod === 'Card' || t.paymentMethod === 'UPI')).reduce((s,t)=>s+(t.paid),0);
+    // Note: This logic seems flawed for 'Cash Balance' as it includes Card/UPI (non-cash). Sticking to original logic for now, but a real POS would separate tender types.
+    const payIn = dailyPayNotes.filter(n=>new Date(n.timestamp).toDateString()===today && n.type==='PayIn').reduce((s,n)=>s+n.amount,0);
+    const exp = dailyPayNotes.filter(n=>new Date(n.timestamp).toDateString()===today && n.type==='Expense').reduce((s,n)=>s+n.amount,0);
+    const net = sales + payIn - exp;
+    document.getElementById('dailyCashBalanceResult').innerHTML = `<div class="cash-balance-summary ${net<0?'negative':''}"><span>Net:</span><span class="value">₹${Math.abs(net).toFixed(2)}</span></div>`;
+}
+function renderNotesPanel() {
+    document.getElementById('billsList').innerHTML = shopNotes.map(b => `<div class="bill-card"><div><b>${b.description}</b> <span>₹${b.total}</span></div><div>Paid: ₹${b.paid}</div></div>`).join('');
+    document.getElementById('dailyPayLog').innerHTML = dailyPayNotes.filter(n=>new Date(n.timestamp).toDateString()===new Date().toDateString()).map(n=>`<div class="daily-pay-record" style="border-left-color:${n.type==='PayIn'?'#4caf50':'#d32f2f'}"><span>${n.description}</span><span>${n.type==='PayIn'?'+':'-'} ${n.amount}</span></div>`).join('');
+}
+function renderAnalysisPanel() {
+    const txs = transactions; // Add filtering logic if needed
+    let total = txs.reduce((s,t)=>s+t.total,0);
+    document.getElementById('analysisContent').innerHTML = `<div class="analysis-stats-grid"><div class="stat-card"><h5>Total Sales</h5><p>₹${total.toFixed(2)}</p></div><div class="stat-card"><h5>Tx Count</h5><p>${txs.length}</p></div></div><button onclick="resetAllData()" style="width:100%;padding:10px;background:#d32f2f;color:white;border:none;">Reset Data</button>`;
+}
+function resetAllData() {
+    if(confirm("Reset ALL data?")){ localStorage.clear(); location.reload(); }
+}
+</script>
+</body>
+</html>
